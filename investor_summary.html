@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SweptCoin AI — Investor Summary</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&family=Playfair+Display:wght@700;900&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --navy: #0D1B3E;
+      --navy2: #112247;
+      --gold: #F4A800;
+      --gold-light: #FFE57F;
+      --cyan: #00C6FF;
+      --purple: #7B2FF7;
+      --white: #FFFFFF;
+      --light: #EAF1FF;
+      --muted: #8BA4CC;
+    }
+
+    html, body {
+      background: #f0f4fb;
+      font-family: 'Inter', sans-serif;
+      color: #1a1a2e;
+    }
+
+    .page {
+      width: 794px;
+      margin: 0 auto;
+      background: white;
+      box-shadow: 0 8px 60px rgba(0,0,0,0.15);
+    }
+
+    /* ── COVER PAGE ── */
+    .cover {
+      background: linear-gradient(145deg, #0D1B3E 0%, #1A3A6E 60%, #0d2b5e 100%);
+      min-height: 1122px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      padding: 60px 40px;
+      page-break-after: always;
+    }
+
+    /* Background decorative circles */
+    .cover::before {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,198,255,0.08);
+      top: -100px; right: -100px;
+    }
+    .cover::after {
+      content: '';
+      position: absolute;
+      width: 350px; height: 350px;
+      border-radius: 50%;
+      border: 1px solid rgba(123,47,247,0.12);
+      bottom: -80px; left: -80px;
+    }
+
+    .cover-grid-line {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,198,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,198,255,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Logo SVG container */
+    .logo-wrap {
+      position: relative;
+      z-index: 2;
+      margin-bottom: 50px;
+    }
+
+    .cover-headline {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      color: white;
+    }
+
+    .cover-headline .label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 5px;
+      color: var(--cyan);
+      text-transform: uppercase;
+      margin-bottom: 18px;
+      opacity: 0.9;
+    }
+
+    .cover-headline h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 48px;
+      font-weight: 900;
+      line-height: 1.15;
+      background: linear-gradient(135deg, #FFFFFF 30%, #00C6FF 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+
+    .cover-headline .sub {
+      font-size: 16px;
+      color: rgba(255,255,255,0.65);
+      font-weight: 300;
+      letter-spacing: 1px;
+      max-width: 480px;
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+
+    .cover-divider {
+      width: 80px; height: 3px;
+      background: linear-gradient(90deg, var(--cyan), var(--purple));
+      border-radius: 2px;
+      margin: 0 auto 40px;
+    }
+
+    .cover-stats {
+      display: flex;
+      gap: 40px;
+      position: relative;
+      z-index: 2;
+      margin-top: 20px;
+    }
+
+    .cover-stat {
+      text-align: center;
+      border: 1px solid rgba(0,198,255,0.2);
+      border-radius: 12px;
+      padding: 22px 30px;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(4px);
+    }
+
+    .cover-stat .num {
+      font-size: 36px;
+      font-weight: 900;
+      color: var(--gold);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .cover-stat .desc {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .cover-footer {
+      position: absolute;
+      bottom: 30px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 2px;
+      z-index: 2;
+    }
+
+    /* Confidential badge */
+    .confidential-badge {
+      position: absolute;
+      top: 32px; right: 32px;
+      border: 1px solid rgba(244,168,0,0.5);
+      color: var(--gold);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      padding: 6px 14px;
+      border-radius: 4px;
+      z-index: 3;
+      text-transform: uppercase;
+    }
+
+    .date-badge {
+      position: absolute;
+      top: 32px; left: 32px;
+      color: rgba(255,255,255,0.4);
+      font-size: 11px;
+      letter-spacing: 1px;
+      z-index: 3;
+    }
+
+    /* ── CONTENT PAGES ── */
+    .content-page {
+      min-height: 1122px;
+      padding: 60px 64px;
+      position: relative;
+      page-break-after: always;
+      background: white;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 48px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #eef2ff;
+    }
+
+    .page-header .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+
+    .page-header .logo-small svg {
+      height: 32px;
+    }
+
+    h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--navy);
+      margin-bottom: 10px;
+      line-height: 1.2;
+    }
+
+    .section-intro {
+      font-size: 15px;
+      color: #5a6a8a;
+      line-height: 1.7;
+      margin-bottom: 36px;
+      max-width: 600px;
+    }
+
+    /* Problem cards */
+    .problem-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .problem-card {
+      background: linear-gradient(145deg, #0D1B3E, #1A3A6E);
+      color: white;
+      border-radius: 14px;
+      padding: 28px 22px;
+    }
+
+    .problem-card .icon {
+      font-size: 28px;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .problem-card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--gold);
+    }
+
+    .problem-card p {
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+      line-height: 1.6;
+    }
+
+    /* How it works */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      margin-bottom: 40px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 22px 24px;
+      border-radius: 12px;
+      border: 1px solid #e8edf8;
+      background: #fafbff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .step::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+      background: linear-gradient(180deg, var(--cyan), var(--purple));
+      border-radius: 4px 0 0 4px;
+    }
+
+    .step-num {
+      width: 40px; height: 40px;
+      min-width: 40px;
+      background: linear-gradient(135deg, var(--navy), #1A3A6E);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 16px;
+      color: var(--gold);
+    }
+
+    .step-content h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .step-content p {
+      font-size: 13px;
+      color: #5a6a8a;
+      line-height: 1.6;
+    }
+
+    .step-tag {
+      margin-left: auto;
+      min-width: fit-content;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+
+    .tag-cyan { background: rgba(0,198,255,0.12); color: #0099cc; }
+    .tag-gold { background: rgba(244,168,0,0.12); color: #c77a00; }
+    .tag-purple { background: rgba(123,47,247,0.12); color: #7B2FF7; }
+    .tag-green { background: rgba(0,200,100,0.12); color: #00a855; }
+
+    /* Metrics table */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .metric-card {
+      text-align: center;
+      padding: 24px 12px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #0D1B3E, #162f5c);
+      color: white;
+    }
+
+    .metric-card .value {
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--gold);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric-card .label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,0.55);
+      text-transform: uppercase;
+      line-height: 1.4;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 36px;
+      font-size: 13px;
+    }
+
+    thead tr {
+      background: linear-gradient(90deg, var(--navy), #1A3A6E);
+      color: white;
+    }
+
+    thead th {
+      padding: 14px 18px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #eef2ff;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f8faff;
+    }
+
+    tbody td {
+      padding: 14px 18px;
+      color: #334;
+      line-height: 1.5;
+    }
+
+    tbody td:first-child {
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .check {
+      color: #00a855;
+      font-weight: 700;
+    }
+
+    /* Roadmap */
+    .roadmap {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 36px;
+      position: relative;
+    }
+
+    .roadmap::before {
+      content: '';
+      position: absolute;
+      left: 26px;
+      top: 20px; bottom: 20px;
+      width: 2px;
+      background: linear-gradient(180deg, var(--cyan), var(--purple));
+    }
+
+    .roadmap-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 24px;
+      padding: 20px 0;
+    }
+
+    .roadmap-dot {
+      width: 20px; height: 20px;
+      min-width: 20px;
+      margin-top: 2px;
+      margin-left: 16px;
+      border-radius: 50%;
+      background: var(--gold);
+      border: 3px solid white;
+      box-shadow: 0 0 0 2px var(--gold);
+      position: relative;
+      z-index: 1;
+    }
+
+    .roadmap-body {
+      flex: 1;
+      background: #fafbff;
+      border: 1px solid #e8edf8;
+      border-radius: 12px;
+      padding: 18px 22px;
+    }
+
+    .roadmap-body .phase-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: var(--purple);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .roadmap-body h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .roadmap-body p {
+      font-size: 12px;
+      color: #5a6a8a;
+      line-height: 1.6;
+    }
+
+    .roadmap-body .capital-tag {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--gold);
+      background: rgba(244,168,0,0.1);
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    /* Risk section */
+    .risk-box {
+      background: linear-gradient(135deg, #0D1B3E, #1e1456);
+      color: white;
+      border-radius: 16px;
+      padding: 32px 36px;
+      margin-bottom: 36px;
+    }
+
+    .risk-box h3 {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--gold);
+      margin-bottom: 20px;
+    }
+
+    .risk-rules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .risk-rule {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.5;
+    }
+
+    .risk-rule .bullet {
+      width: 20px; height: 20px;
+      min-width: 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: white;
+      margin-top: 1px;
+    }
+
+    /* Closing CTA */
+    .cta-section {
+      background: linear-gradient(135deg, var(--navy) 0%, #162f5c 50%, #1e1456 100%);
+      border-radius: 18px;
+      padding: 50px 50px;
+      text-align: center;
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-section::before {
+      content: '';
+      position: absolute;
+      width: 300px; height: 300px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,198,255,0.1);
+      top: -100px; right: -80px;
+    }
+
+    .cta-section h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 30px;
+      font-weight: 900;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff, var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cta-section p {
+      font-size: 14px;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.7;
+      max-width: 500px;
+      margin: 0 auto 28px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cta-quote {
+      font-size: 16px;
+      font-style: italic;
+      color: var(--gold);
+      font-weight: 600;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 24px;
+      margin-top: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media print {
+      body { background: white; }
+      .page { box-shadow: none; }
+      .cover, .content-page { page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════════════════════════ COVER PAGE ═══════════════════════════ -->
+  <div class="cover">
+    <div class="cover-grid-line"></div>
+    <div class="date-badge">May 2026</div>
+    <div class="confidential-badge">Confidential</div>
+
+    <!-- LOGO -->
+    <div class="logo-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 130" width="420" height="118">
+        <defs>
+          <radialGradient id="coinGrad" cx="50%" cy="35%" r="60%">
+            <stop offset="0%" stop-color="#FFE57F"/>
+            <stop offset="50%" stop-color="#F4A800"/>
+            <stop offset="100%" stop-color="#C77A00"/>
+          </radialGradient>
+          <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00C6FF" stop-opacity="0"/>
+            <stop offset="50%" stop-color="#00C6FF"/>
+            <stop offset="100%" stop-color="#7B2FF7"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- Sweep arc trails -->
+        <path d="M 18 98 Q 58 28 105 65" stroke="url(#arcGrad)" stroke-width="3.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+        <path d="M 12 104 Q 50 22 105 65" stroke="url(#arcGrad)" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.35"/>
+        <path d="M 24 92 Q 65 34 105 65" stroke="url(#arcGrad)" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.2"/>
+        <!-- Coin -->
+        <circle cx="105" cy="65" r="40" fill="url(#coinGrad)" filter="url(#glow)"/>
+        <circle cx="105" cy="65" r="32" fill="none" stroke="#C77A00" stroke-width="1.5" opacity="0.5"/>
+        <text x="105" y="76" font-family="Georgia,serif" font-size="34" font-weight="bold" fill="#FFF5CC" text-anchor="middle">$</text>
+        <!-- Speed lines -->
+        <line x1="150" y1="57" x2="168" y2="57" stroke="#00C6FF" stroke-width="2.2" stroke-linecap="round" opacity="0.8"/>
+        <line x1="150" y1="65" x2="172" y2="65" stroke="#00C6FF" stroke-width="3" stroke-linecap="round" opacity="1"/>
+        <line x1="150" y1="73" x2="168" y2="73" stroke="#00C6FF" stroke-width="2.2" stroke-linecap="round" opacity="0.8"/>
+        <!-- Wordmark -->
+        <text x="182" y="57" font-family="'Segoe UI',Arial,sans-serif" font-size="36" font-weight="900" letter-spacing="0" fill="#FFFFFF">Swept</text>
+        <text x="327" y="57" font-family="'Segoe UI',Arial,sans-serif" font-size="36" font-weight="900" letter-spacing="0" fill="#00C6FF">Coin</text>
+        <!-- Tagline -->
+        <text x="182" y="82" font-family="'Segoe UI',Arial,sans-serif" font-size="12" font-weight="400" letter-spacing="4" fill="#7EB8FF" opacity="0.85">AI  TRADING  INTELLIGENCE</text>
+        <!-- AI Badge -->
+        <rect x="390" y="88" width="52" height="22" rx="5" fill="#7B2FF7" opacity="0.9"/>
+        <text x="416" y="104" font-family="'Segoe UI',Arial,sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">AI BOT</text>
+      </svg>
+    </div>
+
+    <div class="cover-headline">
+      <div class="label">Investor Briefing Document</div>
+      <h1>Autonomous Crypto<br/>Trading Intelligence</h1>
+      <div class="cover-divider"></div>
+      <p class="sub">A data-driven AI trading system engineered to generate consistent returns in the small-cap digital asset market — operating 24/7 without emotion.</p>
+    </div>
+
+    <div class="cover-stats">
+      <div class="cover-stat">
+        <div class="num">70%+</div>
+        <div class="desc">Target Win Rate</div>
+      </div>
+      <div class="cover-stat">
+        <div class="num">3×</div>
+        <div class="desc">Signal Confirmation</div>
+      </div>
+      <div class="cover-stat">
+        <div class="num">24/7</div>
+        <div class="desc">Autonomous Operation</div>
+      </div>
+      <div class="cover-stat">
+        <div class="num">5%</div>
+        <div class="desc">Max Risk Per Trade</div>
+      </div>
+    </div>
+
+    <div class="cover-footer">SWEPT COIN AI &nbsp;·&nbsp; CONFIDENTIAL INVESTOR DOCUMENT &nbsp;·&nbsp; MAY 2026</div>
+  </div>
+
+
+  <!-- ═══════════════════════════ PAGE 2: Problem & Solution ═══════════════════════════ -->
+  <div class="content-page">
+    <div class="page-header">
+      <span class="section-label">The Opportunity</span>
+      <div class="logo-small">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" width="160" height="32">
+          <defs>
+            <radialGradient id="cg2" cx="50%" cy="35%" r="60%">
+              <stop offset="0%" stop-color="#FFE57F"/>
+              <stop offset="100%" stop-color="#C77A00"/>
+            </radialGradient>
+            <linearGradient id="ag2" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#00C6FF" stop-opacity="0"/>
+              <stop offset="100%" stop-color="#7B2FF7"/>
+            </linearGradient>
+          </defs>
+          <path d="M 4 30 Q 14 8 28 18" stroke="url(#ag2)" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+          <circle cx="28" cy="18" r="14" fill="url(#cg2)"/>
+          <text x="28" y="23" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#FFF5CC" text-anchor="middle">$</text>
+          <text x="48" y="22" font-family="'Segoe UI',Arial,sans-serif" font-size="16" font-weight="900" fill="#0D1B3E">Swept</text>
+          <text x="92" y="22" font-family="'Segoe UI',Arial,sans-serif" font-size="16" font-weight="900" fill="#00C6FF">Coin</text>
+        </svg>
+      </div>
+    </div>
+
+    <h2>Why 95% of Crypto<br/>Traders Lose Money</h2>
+    <p class="section-intro">The crypto market is one of the most volatile and emotionally charged asset classes in the world. The three root causes of retail failure are consistent and predictable — and entirely solvable with the right technology.</p>
+
+    <div class="problem-cards">
+      <div class="problem-card">
+        <span class="icon">😰</span>
+        <h4>Emotion-Driven Decisions</h4>
+        <p>Human traders buy at the top out of greed and sell at the bottom out of fear. This pattern is statistically proven and universally consistent.</p>
+      </div>
+      <div class="problem-card">
+        <span class="icon">🎲</span>
+        <h4>Poor Coin Selection</h4>
+        <p>Most traders pick coins based on social media hype — not real fundamentals, market structure, or proven catalysts for price movement.</p>
+      </div>
+      <div class="problem-card">
+        <span class="icon">💸</span>
+        <h4>Zero Risk Management</h4>
+        <p>No stop-losses, no position sizing, no rules. A single bad trade can wipe out weeks of gains when there is no disciplined framework in place.</p>
+      </div>
+    </div>
+
+    <h2 style="margin-top: 36px;">SweptCoin Eliminates All Three</h2>
+    <p class="section-intro">By replacing human judgment with a rules-based AI engine, SweptCoin removes emotion entirely and enforces strict risk controls on every single trade.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Screener Engine — Coin Discovery</h4>
+          <p>Scans the entire Bybit market every minute. Filters to small-cap coins ($10M–$100M market cap, 60+ days old) with confirmed partnership or collaboration news — the highest-probability catalyst for short-term price appreciation.</p>
+        </div>
+        <span class="step-tag tag-cyan">Discovery</span>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>Technical Engine — Chart Intelligence</h4>
+          <p>Identifies mathematically validated support and resistance levels from historical price action. Only enters trades when price is at a proven support level and a volume spike confirms real buying pressure.</p>
+        </div>
+        <span class="step-tag tag-gold">Analysis</span>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Sentiment Engine — News Filter</h4>
+          <p>Fetches the latest 20 news headlines per coin and runs them through a sentiment analyzer. If sentiment is negative, the trade is blocked — regardless of what the chart says. This single rule eliminates an entire category of losing trades.</p>
+        </div>
+        <span class="step-tag tag-purple">Sentiment</span>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h4>Execution Engine — Automated Orders</h4>
+          <p>Places orders with pre-calculated take-profit (at next resistance) and a 2% trailing stop-loss. Position size is automatically capped at 5% of total capital. Never risks more than the rules allow.</p>
+        </div>
+        <span class="step-tag tag-green">Execution</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════ PAGE 3: Why Invest ═══════════════════════════ -->
+  <div class="content-page">
+    <div class="page-header">
+      <span class="section-label">Investment Case</span>
+      <div class="logo-small">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" width="160" height="32">
+          <defs>
+            <radialGradient id="cg3" cx="50%" cy="35%" r="60%"><stop offset="0%" stop-color="#FFE57F"/><stop offset="100%" stop-color="#C77A00"/></radialGradient>
+            <linearGradient id="ag3" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#00C6FF" stop-opacity="0"/><stop offset="100%" stop-color="#7B2FF7"/></linearGradient>
+          </defs>
+          <path d="M 4 30 Q 14 8 28 18" stroke="url(#ag3)" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+          <circle cx="28" cy="18" r="14" fill="url(#cg3)"/>
+          <text x="28" y="23" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#FFF5CC" text-anchor="middle">$</text>
+          <text x="48" y="22" font-family="'Segoe UI',Arial,sans-serif" font-size="16" font-weight="900" fill="#0D1B3E">Swept</text>
+          <text x="92" y="22" font-family="'Segoe UI',Arial,sans-serif" font-size="16" font-weight="900" fill="#00C6FF">Coin</text>
+        </svg>
+      </div>
+    </div>
+
+    <h2>Why This Is Attractive<br/>to Investors</h2>
+    <p class="section-intro">SweptCoin is not a speculative bet. It is a systematized, testable, and scalable technology asset with demonstrable edge over unstructured human trading.</p>
+
+    <div class="metrics-grid">
+      <div class="metric-card"><div class="value">70%+</div><div class="label">Target Win Rate</div></div>
+      <div class="metric-card"><div class="value">2%</div><div class="label">Max Loss Per Trade</div></div>
+      <div class="metric-card"><div class="value">3</div><div class="label">Independent Signals Required</div></div>
+      <div class="metric-card"><div class="value">60d</div><div class="label">Historical Backtest Period</div></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Factor</th>
+          <th>What It Means for You</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Backtested Strategy</td>
+          <td>60%+ win rate validated on historical data before any real capital is deployed</td>
+        </tr>
+        <tr>
+          <td>Automated Risk Management</td>
+          <td>Max 5% capital per trade; bot auto-halts after 3 consecutive losses</td>
+        </tr>
+        <tr>
+          <td>24/7 Operation</td>
+          <td>The bot never sleeps, never misses a setup, never acts on emotion</td>
+        </tr>
+        <tr>
+          <td>Small-Cap Focus</td>
+          <td>These coins move 3–10× more than Bitcoin — profit potential per trade is significantly higher</td>
+        </tr>
+        <tr>
+          <td>News-Catalyst Filter</td>
+          <td>Only trades coins with real confirmed market momentum, not social media speculation</td>
+        </tr>
+        <tr>
+          <td>Scalable Architecture</td>
+          <td>Designed to scale from $500 to $500,000+ with zero architectural changes</td>
+        </tr>
+        <tr>
+          <td>Full Audit Trail</td>
+          <td>Every decision is logged — you can audit every trade, every signal, every outcome</td>
+        </tr>
+        <tr>
+          <td>Triple-Confirmation Model</td>
+          <td>All 3 engines (TA + Sentiment + Screener) must agree — same approach used by professional quant funds</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="risk-box">
+      <h3>🛡️ Built-In Risk Controls</h3>
+      <div class="risk-rules">
+        <div class="risk-rule"><div class="bullet">✓</div><span>Never risk more than 5% of total capital on a single trade</span></div>
+        <div class="risk-rule"><div class="bullet">✓</div><span>2% trailing stop-loss auto-closes losing trades immediately</span></div>
+        <div class="risk-rule"><div class="bullet">✓</div><span>Bot automatically halts after 3 consecutive losses for review</span></div>
+        <div class="risk-rule"><div class="bullet">✓</div><span>Paper trading mode — proven on live data before real money is used</span></div>
+        <div class="risk-rule"><div class="bullet">✓</div><span>Sentiment blocker prevents trading into bad news events</span></div>
+        <div class="risk-rule"><div class="bullet">✓</div><span>All API keys isolated — never exposed to codebase or logs</span></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════ PAGE 4: Roadmap & Ask ═══════════════════════════ -->
+  <div class="content-page" style="page-break-after: avoid;">
+    <div class="page-header">
+      <span class="section-label">Deployment Roadmap</span>
+      <div class="logo-small">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" width="160" height="32">
+          <defs>
+            <radialGradient id="cg4" cx="50%" cy="35%" r="60%"><stop offset="0%" stop-color="#FFE57F"/><stop offset="100%" stop-color="#C77A00"/></radialGradient>
+            <linearGradient id="ag4" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#00C6FF" stop-opacity="0"/><stop offset="100%" stop-color="#7B2FF7"/></linearGradient>
+          </defs>
+          <path d="M 4 30 Q 14 8 28 18" stroke="url(#ag4)" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+          <circle cx="28" cy="18" r="14" fill="url(#cg4)"/>
+          <text x="28" y="23" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#FFF5CC" text-anchor="middle">$</text>
+          <text x="48" y="22" font-family="'Segoe UI',Arial,sans-serif" font-size="16" font-weight="900" fill="#0D1B3E">Swept</text>
+          <text x="92" y="22" font-family="'Segoe UI',Arial,sans-serif" font-size="16" font-weight="900" fill="#00C6FF">Coin</text>
+        </svg>
+      </div>
+    </div>
+
+    <h2>Capital Deployment<br/>Roadmap</h2>
+    <p class="section-intro">SweptCoin follows a disciplined phased rollout. Real capital is only deployed after the strategy has proven itself first on historical data, then on live paper trading with zero risk.</p>
+
+    <div class="roadmap">
+      <div class="roadmap-item">
+        <div class="roadmap-dot"></div>
+        <div class="roadmap-body">
+          <div class="phase-label">Phase 1 · Months 1–2</div>
+          <h4>Backtesting & Paper Trading Validation</h4>
+          <p>Strategy is tested against 60 days of historical data across multiple coins. Then runs live on Bybit with paper (simulated) trades for 2 weeks. Only proceeds if win rate stays above 60%.</p>
+          <span class="capital-tag">$0 capital at risk</span>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot"></div>
+        <div class="roadmap-body">
+          <div class="phase-label">Phase 2 · Months 2–3</div>
+          <h4>Live Deployment — Minimal Capital</h4>
+          <p>First live deployment with a small seed of $500 USDT. Max $50 per trade. Focus is validating real-world execution quality — measuring slippage and fill prices vs. signal prices.</p>
+          <span class="capital-tag">$500 seed capital</span>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot"></div>
+        <div class="roadmap-body">
+          <div class="phase-label">Phase 3 · Months 4–5</div>
+          <h4>Scaling — Investor Capital Deployed</h4>
+          <p>After 4 consecutive weeks of profitable live trading, position sizes scale up proportionally. All performance metrics are fully auditable at this stage with complete trade logs.</p>
+          <span class="capital-tag">$2,500 – $10,000</span>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-dot"></div>
+        <div class="roadmap-body">
+          <div class="phase-label">Phase 4 · Month 6+</div>
+          <h4>Full Scale — Compounding Returns</h4>
+          <p>With a proven live track record, the system scales to full deployment. Architecture supports unlimited capital scaling. Future upgrades include AI sentiment models and multi-exchange support.</p>
+          <span class="capital-tag">$10,000+</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta-section">
+      <h3>We Don't Predict the Market.<br/>We Let the Market Tell Us.</h3>
+      <p>SweptCoin is a disciplined, data-driven system built to outperform unstructured manual trading through consistency, automated risk controls, and 24/7 market coverage. We combine the precision of quantitative hedge fund methodology with the accessibility of retail deployment.</p>
+      <div class="cta-quote">"Three signals must agree. Every trade has a stop-loss. Every decision is logged. This is not gambling — it is engineered probability."</div>
+    </div>
+
+    <p style="text-align:center; font-size:11px; color:#aaa; margin-top:36px; letter-spacing:1px;">
+      SWEPT COIN AI &nbsp;·&nbsp; CONFIDENTIAL &nbsp;·&nbsp; MAY 2026 &nbsp;·&nbsp; Past performance of backtested strategies does not guarantee future results. Crypto trading involves risk.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
