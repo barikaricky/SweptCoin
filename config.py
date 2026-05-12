@@ -21,8 +21,8 @@ NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 PAPER_TRADING = True
 
 # ─── Screener Settings ────────────────────────────────────────────────────────
-MIN_MARKET_CAP_USD = 10_000_000          # $10M minimum
-MAX_MARKET_CAP_USD = 100_000_000         # $100M maximum
+MIN_MARKET_CAP_USD = 300_000_000         # $300M minimum — liquid, established coins
+MAX_MARKET_CAP_USD = 10_000_000_000      # $10B maximum — avoids BTC/ETH/BNB (too slow)
 MIN_COIN_AGE_DAYS = 60                   # Coin must be at least 60 days old
 MAX_WATCHLIST_SIZE = 10                  # Max coins tracked simultaneously
 
@@ -34,7 +34,9 @@ PARTNERSHIP_KEYWORDS = [
 ]
 
 # ─── Sentiment Settings ───────────────────────────────────────────────────────
-MIN_SENTIMENT_SCORE = 0.05               # Below this → no trade (range: -1.0 to +1.0)
+# Only block coins with actively BEARISH news (< -0.15).
+# Neutral (0.0) or no-news coins (score=0.0) are treated as fine to trade.
+MIN_SENTIMENT_SCORE = -0.15              # Only block BEARISH coins; NEUTRAL passes
 SENTIMENT_NEWS_LIMIT = 20                # Number of recent articles to analyse per coin
 
 # ─── Technical Analysis Settings ─────────────────────────────────────────────
