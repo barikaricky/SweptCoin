@@ -1,0 +1,9 @@
+pybit==5.8.0
+pandas>=2.0.0
+numpy>=2.0.0
+requests>=2.31.0
+vaderSentiment==3.3.2
+SQLAlchemy>=2.0.0
+python-dotenv>=1.0.0
+loguru>=0.7.0
+schedule>=1.2.0
