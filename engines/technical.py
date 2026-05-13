@@ -2,10 +2,13 @@
 engines/technical.py — Technical Analysis Engine.
 
 Responsibilities:
-  - Download and store OHLCV candle data from Bybit
-  - Detect Support and Resistance levels using pivot point analysis
-  - Detect volume spikes
-  - Produce a BUY / HOLD signal with calculated TP and SL prices
+  - Download and store OHLCV candle data from Bybit (4-hour candles)
+  - Detect Support and Resistance using pivot analysis (confirmed clusters)
+  - Compute EMA, RSI, MACD in pure pandas/numpy (Python 3.14 compatible)
+  - Produce BUY / HOLD signal via three independent triggers:
+      A) Support Bounce  — near confirmed support + RSI oversold + volume spike
+      B) EMA Crossover   — EMA9 > EMA21 (fresh cross) + above EMA50 + volume spike
+      C) MACD Crossover  — MACD line > signal line (fresh cross) + above EMA50
 """
 
 from datetime import datetime, timezone, timedelta
@@ -50,11 +53,8 @@ def _bybit_klines(symbol: str, interval: str, start_ms: int, end_ms: int) -> Lis
         return []
 
 
-def download_history(symbol: str, interval: str = config.CANDLE_INTERVAL_MINUTE):
-    """
-    Download the last HISTORY_DAYS of candles for a symbol and save to DB.
-    Only fetches candles not already stored (incremental update).
-    """
+def download_history(symbol: str, interval: str = config.CANDLE_INTERVAL):
+    """Download the last HISTORY_DAYS of 4H candles and save to DB (incremental)."""
     session = get_session()
     try:
         now = datetime.now(timezone.utc)
@@ -133,7 +133,7 @@ def download_history(symbol: str, interval: str = config.CANDLE_INTERVAL_MINUTE)
 
 # ─── Load Data ────────────────────────────────────────────────────────────────
 
-def load_candles(symbol: str, interval: str, days: int = config.HISTORY_DAYS) -> pd.DataFrame:
+def load_candles(symbol: str, interval: str = config.CANDLE_INTERVAL, days: int = config.HISTORY_DAYS) -> pd.DataFrame:
     """Load stored candles into a pandas DataFrame sorted oldest-first."""
     session = get_session()
     try:
@@ -194,11 +194,9 @@ def _find_pivot_highs(df: pd.DataFrame, window: int = 5) -> List[float]:
     return pivots
 
 
-def _cluster_levels(prices: List[float], tolerance_pct: float = 0.015) -> List[float]:
+def _cluster_levels(prices: List[float], tolerance_pct: float = 0.02) -> List[float]:
     """
-    Cluster nearby price levels. If two pivots are within tolerance_pct of each
-    other, they are considered the same level (averaged). Returns confirmed levels
-    sorted ascending.
+    Cluster nearby price levels. Returns confirmed levels (hit >= PIVOT_BOUNCE_COUNT times).
     """
     if not prices:
         return []
@@ -229,6 +227,40 @@ def get_resistance_levels(df: pd.DataFrame) -> List[float]:
     return _cluster_levels(pivots)
 
 
+# ─── Pure-Pandas Indicators ───────────────────────────────────────────────────
+
+def _calc_ema(series: pd.Series, period: int) -> pd.Series:
+    """Exponential Moving Average — pure pandas."""
+    return series.ewm(span=period, adjust=False).mean()
+
+
+def _calc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Relative Strength Index using Wilder smoothing (ewm com = period-1).
+    Returns values 0–100. NaN values filled with 50 (neutral).
+    """
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=period - 1, adjust=False).mean()
+    avg_loss = loss.ewm(com=period - 1, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50)
+
+
+def _calc_macd(series: pd.Series, fast: int = 12, slow: int = 26, sig: int = 9):
+    """
+    MACD indicator — returns (macd_line, signal_line, histogram) as pd.Series.
+    """
+    ema_fast = _calc_ema(series, fast)
+    ema_slow = _calc_ema(series, slow)
+    macd = ema_fast - ema_slow
+    signal = _calc_ema(macd, sig)
+    hist = macd - signal
+    return macd, signal, hist
+
+
 # ─── Volume Spike ─────────────────────────────────────────────────────────────
 
 def has_volume_spike(df: pd.DataFrame) -> bool:
@@ -247,136 +279,172 @@ def has_volume_spike(df: pd.DataFrame) -> bool:
 
 def get_signal(symbol: str) -> Dict:
     """
-    Main entry point. Downloads fresh data, computes S/R levels, and returns
-    a trading signal.
+    Main entry point. Downloads fresh 4-hour candles, computes EMA/RSI/MACD,
+    and returns a trading signal using one of three independent buy triggers:
 
-    Returns:
-        {
-            "symbol": str,
-            "signal": "BUY" | "HOLD",
-            "direction": "LONG" | "WAIT",
-            "current_price": float,
-            "entry_price": float | None,
-            "take_profit": float | None,
-            "stop_loss": float | None,
-            "nearest_support": float | None,
-            "nearest_resistance": float | None,
-            "volume_spike": bool,
-            "reason": str,
-            "trade_thesis": str,   # human-readable case for the trade
-        }
+      A) Support Bounce  — price within SUPPORT_PROXIMITY_PCT of confirmed support
+                           + RSI < RSI_OVERSOLD + volume spike
+      B) EMA Crossover   — EMA(FAST) just crossed above EMA(SLOW)
+                           + price > EMA(TREND) + RSI < 60 + volume spike
+      C) MACD Crossover  — MACD line just crossed above signal line
+                           + price > EMA(TREND) + RSI < 60
+
+    TP  = nearest resistance above price (fallback: +5%).
+    SL  = entry × (1 - STOP_LOSS_PCT).
+    Trade only fires if R/R ≥ 1.0.
     """
-    # Ensure we have fresh data
-    download_history(symbol, config.CANDLE_INTERVAL_MINUTE)
-    download_history(symbol, config.CANDLE_INTERVAL_DAY)
+    download_history(symbol, config.CANDLE_INTERVAL)
+    df = load_candles(symbol, config.CANDLE_INTERVAL)
 
-    # Use daily candles for S/R detection (cleaner pivots)
-    df_day = load_candles(symbol, config.CANDLE_INTERVAL_DAY)
-    # Use 1-min candles for volume spike detection
-    df_min = load_candles(symbol, config.CANDLE_INTERVAL_MINUTE, days=1)
-
-    no_signal = {
+    _no_data = {
         "symbol": symbol, "signal": "HOLD", "direction": "WAIT",
-        "current_price": None,
-        "entry_price": None, "take_profit": None, "stop_loss": None,
+        "current_price": None, "entry_price": None,
+        "take_profit": None, "stop_loss": None,
         "nearest_support": None, "nearest_resistance": None,
         "volume_spike": False, "reason": "Insufficient data",
-        "trade_thesis": "No thesis — insufficient data to analyse.",
+        "trade_thesis": "No thesis — insufficient data.",
     }
 
-    if df_day.empty or len(df_day) < 10:
-        return {**no_signal, "reason": "Not enough daily candle data"}
+    if df.empty or len(df) < 50:
+        return {**_no_data, "reason": "Need 50+ candles"}
 
-    current_price = df_day["close"].iloc[-1]
+    current_price = float(df["close"].iloc[-1])
+    close = df["close"]
 
-    supports = get_support_levels(df_day)
-    resistances = get_resistance_levels(df_day)
+    # ── Compute indicators ──
+    ema9      = _calc_ema(close, config.EMA_FAST)
+    ema21     = _calc_ema(close, config.EMA_SLOW)
+    ema50     = _calc_ema(close, config.EMA_TREND)
+    rsi       = _calc_rsi(close, config.RSI_PERIOD)
+    macd_line, sig_line, _ = _calc_macd(close)
 
-    # Find nearest support below current price
-    supports_below = [s for s in supports if s < current_price]
-    nearest_support = max(supports_below) if supports_below else None
+    rsi_now    = float(rsi.iloc[-1])
+    ema9_now   = float(ema9.iloc[-1])
+    ema21_now  = float(ema21.iloc[-1])
+    ema50_now  = float(ema50.iloc[-1])
+    macd_now   = float(macd_line.iloc[-1])
+    sig_now    = float(sig_line.iloc[-1])
+    ema9_prev  = float(ema9.iloc[-2])
+    ema21_prev = float(ema21.iloc[-2])
+    macd_prev  = float(macd_line.iloc[-2])
+    sig_prev   = float(sig_line.iloc[-2])
 
-    # Find nearest resistance above current price
+    vol_spike   = has_volume_spike(df)
+    above_ema50 = current_price > ema50_now
+
+    # ── S/R levels ──
+    supports    = get_support_levels(df)
+    resistances = get_resistance_levels(df)
+    supports_below    = [s for s in supports    if s < current_price]
     resistances_above = [r for r in resistances if r > current_price]
+    nearest_support    = max(supports_below)    if supports_below    else None
     nearest_resistance = min(resistances_above) if resistances_above else None
 
-    vol_spike = has_volume_spike(df_min) if not df_min.empty else False
+    # TP = nearest resistance; fallback = current price +5%
+    tp_target = nearest_resistance if nearest_resistance else round(current_price * 1.05, 8)
 
-    # ── BUY condition ──
-    if nearest_support is not None:
-        proximity = abs(current_price - nearest_support) / nearest_support
-        near_support = proximity <= config.SUPPORT_PROXIMITY_PCT
-    else:
-        near_support = False
+    # ── Nested helpers (Python closure — share outer scope) ──────────────────
 
-    if near_support and vol_spike and nearest_resistance is not None:
-        take_profit = nearest_resistance
-        stop_loss = round(current_price * (1 - config.STOP_LOSS_PCT), 8)
-        rr_ratio = (take_profit - current_price) / (current_price - stop_loss)
+    def _buy(trigger: str, detail: str) -> Dict:
+        entry = current_price
+        tp    = tp_target
+        sl    = round(entry * (1 - config.STOP_LOSS_PCT), 8)
+        if entry <= sl:
+            return _hold("SL calculation error")
+        rr = (tp - entry) / (entry - sl)
+        if rr < 1.0:
+            return _hold(f"R/R {rr:.2f} < 1.0 on {trigger}")
+        upside = (tp - entry) / entry * 100
+        reason = f"{trigger} | RSI={rsi_now:.1f} | vol={vol_spike} | R/R={rr:.2f}"
+        thesis = (
+            f"BUY \u2014 {trigger}. {detail} "
+            f"RSI={rsi_now:.1f}, EMA9/21/50={ema9_now:.4g}/{ema21_now:.4g}/{ema50_now:.4g}. "
+            f"TP=${tp:.6g} (+{upside:.1f}%), SL=${sl:.6g} (-{config.STOP_LOSS_PCT*100:.1f}%), "
+            f"R/R={rr:.2f}x."
+        )
+        logger.info(f"Signal [{symbol}] BUY (LONG) | price={current_price} | {reason}")
+        return {
+            "symbol": symbol, "signal": "BUY", "direction": "LONG",
+            "current_price": current_price, "entry_price": entry,
+            "take_profit": tp, "stop_loss": sl,
+            "nearest_support": nearest_support, "nearest_resistance": nearest_resistance,
+            "volume_spike": vol_spike, "reason": reason, "trade_thesis": thesis,
+        }
 
-        if rr_ratio < 1.0:
-            reason = f"R/R ratio {rr_ratio:.2f} too low (need >= 1.0)"
-            signal = "HOLD"
-            direction = "WAIT"
-            take_profit = None
-            stop_loss = None
-            trade_thesis = (
-                f"Price is near the {nearest_support:.6g} support zone but the "
-                f"reward-to-risk ratio is only {rr_ratio:.2f} (minimum 1.0 required). "
-                f"The next resistance target at {nearest_resistance:.6g} is too close to justify entry. "
-                f"Wait for a deeper pullback or a higher resistance level to improve the setup."
+    def _hold(reason: str) -> Dict:
+        parts = []
+        if nearest_support:
+            prox = abs(current_price - nearest_support) / nearest_support * 100
+            parts.append(
+                f"support={nearest_support:.4g} ({prox:.1f}% away, "
+                f"need <{config.SUPPORT_PROXIMITY_PCT * 100:.0f}%)"
             )
         else:
-            signal = "BUY"
-            direction = "LONG"
-            upside_pct = (take_profit - current_price) / current_price * 100
-            downside_pct = config.STOP_LOSS_PCT * 100
-            reason = (
-                f"Price {current_price} within {proximity*100:.2f}% of support "
-                f"{nearest_support} with volume spike. R/R={rr_ratio:.2f}"
+            parts.append("no confirmed support")
+        parts.append(f"RSI={rsi_now:.1f}")
+        parts.append(f"EMA9={ema9_now:.4g} vs EMA21={ema21_now:.4g}")
+        parts.append(f"MACD={macd_now:.4g} vs sig={sig_now:.4g}")
+        parts.append(f"vol_spike={vol_spike}")
+        full_reason = f"{reason} | " + " | ".join(parts[:3])
+        thesis = (
+            f"No trade on {symbol}. {reason}. "
+            f"Conditions: {'; '.join(parts)}. "
+            f"Wait for support bounce, EMA cross, or MACD cross."
+        )
+        logger.info(f"Signal [{symbol}] HOLD (WAIT) | price={current_price} | {full_reason}")
+        return {
+            "symbol": symbol, "signal": "HOLD", "direction": "WAIT",
+            "current_price": current_price, "entry_price": None,
+            "take_profit": None, "stop_loss": None,
+            "nearest_support": nearest_support, "nearest_resistance": nearest_resistance,
+            "volume_spike": vol_spike, "reason": full_reason, "trade_thesis": thesis,
+        }
+
+    # ── Trigger A: Support Bounce ──────────────────────────────────────────────
+    # Near confirmed support + RSI not overbought. Volume is a bonus, not required.
+    if nearest_support is not None:
+        prox = abs(current_price - nearest_support) / nearest_support
+        if prox <= config.SUPPORT_PROXIMITY_PCT and rsi_now < config.RSI_OVERSOLD:
+            vol_note = "Volume spike confirms entry." if vol_spike else "Low volume — tight SL advised."
+            return _buy(
+                "Support Bounce",
+                f"Price {current_price:.4g} is within {prox * 100:.1f}% of confirmed support "
+                f"{nearest_support:.4g} (held {config.PIVOT_BOUNCE_COUNT}+ times). "
+                f"RSI={rsi_now:.1f} — not overbought. {vol_note}",
             )
-            trade_thesis = (
-                f"GO LONG on {symbol}. "
-                f"Price ({current_price:.6g}) is bouncing off a confirmed support zone at "
-                f"{nearest_support:.6g} ({proximity*100:.2f}% away), which has held "
-                f"{config.PIVOT_BOUNCE_COUNT}+ times historically. "
-                f"A volume spike confirms buying pressure is entering. "
-                f"Target the next resistance at {take_profit:.6g} for a "
-                f"{upside_pct:.1f}% gain, with a hard stop at {stop_loss:.6g} "
-                f"({downside_pct:.1f}% risk). Reward-to-risk ratio: {rr_ratio:.2f}x."
-            )
-    else:
-        signal = "HOLD"
-        direction = "WAIT"
-        take_profit = None
-        stop_loss = None
-        parts = []
-        if not near_support:
-            nearest_str = f"{nearest_support:.6g}" if nearest_support else "none found"
-            parts.append(f"price is not near a support zone (nearest={nearest_str})")
-        if not vol_spike:
-            parts.append("no volume spike — buyers not confirmed yet")
-        if nearest_resistance is None:
-            parts.append("no resistance level found for take-profit target")
-        reason = "; ".join(parts) if parts else "Conditions not met"
-        trade_thesis = (
-            f"No trade on {symbol} right now. Reason: {reason}. "
-            f"Wait for price to approach a support zone with a volume surge before entering."
+
+    # ── Trigger B: EMA9/21 Crossover ──────────────────────────────────────────
+    # Fresh cross above EMA21 with macro trend (EMA50) pointing up. No vol spike required.
+    ema_crossed = (ema9_prev <= ema21_prev) and (ema9_now > ema21_now)
+    if ema_crossed and above_ema50 and rsi_now < 65:
+        return _buy(
+            "EMA9/21 Crossover",
+            f"EMA9 ({ema9_now:.4g}) just crossed above EMA21 ({ema21_now:.4g}). "
+            f"Price above EMA50 ({ema50_now:.4g}) confirms the macro trend is up. "
+            f"RSI={rsi_now:.1f}.",
         )
 
-    logger.info(f"Signal [{symbol}] {signal} ({direction}) | price={current_price} | {reason}")
+    # ── Trigger C: MACD Crossover ─────────────────────────────────────────────
+    # MACD line crosses above signal — momentum shift. No EMA50 filter needed.
+    macd_crossed = (macd_prev <= sig_prev) and (macd_now > sig_now)
+    if macd_crossed and rsi_now < 65:
+        return _buy(
+            "MACD Crossover",
+            f"MACD line ({macd_now:.4g}) just crossed above signal ({sig_now:.4g}) — "
+            f"momentum is turning bullish. RSI={rsi_now:.1f}.",
+        )
 
-    return {
-        "symbol": symbol,
-        "signal": signal,
-        "direction": direction,
-        "current_price": current_price,
-        "entry_price": current_price if signal == "BUY" else None,
-        "take_profit": take_profit,
-        "stop_loss": stop_loss,
-        "nearest_support": nearest_support,
-        "nearest_resistance": nearest_resistance,
-        "volume_spike": vol_spike,
-        "reason": reason,
-        "trade_thesis": trade_thesis,
-    }
+    # ── Trigger D: EMA Alignment (Uptrend Riding) ─────────────────────────────
+    # All three EMAs bullishly stacked (9 > 21 > 50) + RSI in healthy zone + MACD positive.
+    # Catches established uptrends that the crossover triggers already missed.
+    ema_aligned = (ema9_now > ema21_now) and (ema21_now > ema50_now)
+    if ema_aligned and 45 <= rsi_now <= 65 and macd_now > 0:
+        return _buy(
+            "EMA Alignment (Uptrend)",
+            f"EMA9 ({ema9_now:.4g}) > EMA21 ({ema21_now:.4g}) > EMA50 ({ema50_now:.4g}) — "
+            f"all EMAs bullishly stacked. RSI={rsi_now:.1f} in healthy range. "
+            f"MACD={macd_now:.4g} positive — momentum with the trend.",
+        )
+
+    # ── No trigger fired ──────────────────────────────────────────────────────
+    return _hold("no buy trigger (checked: Support Bounce, EMA Cross, MACD Cross, EMA Alignment)")

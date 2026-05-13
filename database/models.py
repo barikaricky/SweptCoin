@@ -41,6 +41,7 @@ class Trade(Base):
     exit_price = Column(Float, nullable=True)          # Null until trade is closed
     take_profit = Column(Float, nullable=False)
     stop_loss = Column(Float, nullable=False)
+    trailing_stop = Column(Float, nullable=True)     # Raised as price moves in our favour
     quantity_usdt = Column(Float, nullable=False)
     is_paper = Column(Boolean, default=True)
     status = Column(String(10), default="OPEN")        # OPEN, WIN, LOSS
@@ -68,6 +69,9 @@ class ScreenedCoin(Base):
     sentiment_score = Column(Float, nullable=True)
     is_active = Column(Boolean, default=True)
     last_screened = Column(DateTime, default=datetime.utcnow)
+    last_signal = Column(String(10), nullable=True)       # BUY / HOLD / SELL
+    signal_reason = Column(Text, nullable=True)           # Short reason string
+    signal_time = Column(DateTime, nullable=True)         # When signal was last computed
 
     def __repr__(self):
         return f"<ScreenedCoin {self.symbol} mcap=${self.market_cap_usd:,.0f} age={self.age_days}d>"

@@ -13,6 +13,7 @@ import time
 import sys
 from datetime import datetime, timezone
 
+import requests as _req
 from loguru import logger
 
 import config
@@ -24,7 +25,10 @@ from engines.execution import (
     enter_trade,
     check_open_positions,
     is_trading_halted,
+    get_paper_balance,
 )
+from database.db_setup import get_session
+from database.models import Trade, ScreenedCoin
 
 
 # ─── Logging setup ────────────────────────────────────────────────────────────
@@ -44,6 +48,97 @@ def setup_logging():
         retention="30 days",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
     )
+
+
+# ─── Live Price Fetch ─────────────────────────────────────────────────────────
+
+def fetch_live_price(symbol: str) -> float | None:
+    """
+    Fetch the real-time spot price from Bybit's public ticker endpoint.
+    Always uses the real (mainnet) API so paper trades track actual market prices.
+    """
+    try:
+        resp = _req.get(
+            "https://api.bybit.com/v5/market/tickers",
+            params={"category": "spot", "symbol": symbol},
+            timeout=5,
+        ).json()
+        return float(resp["result"]["list"][0]["lastPrice"])
+    except Exception:
+        return None
+
+
+# ─── Performance Report ───────────────────────────────────────────────────────
+
+def print_performance_report(cycle: int):
+    """
+    Print a full P&L summary after every cycle.
+    Shows paper balance, win/loss record, and a trade-by-trade ledger.
+    """
+    session = get_session()
+    try:
+        all_trades = session.query(Trade).order_by(Trade.id.asc()).all()
+        open_trades  = [t for t in all_trades if t.status == "OPEN"]
+        closed_trades = [t for t in all_trades if t.status in ("WIN", "LOSS")]
+        wins   = [t for t in closed_trades if t.status == "WIN"]
+        losses = [t for t in closed_trades if t.status == "LOSS"]
+        total_pnl  = sum(t.pnl_usdt or 0.0 for t in closed_trades)
+        win_rate   = (len(wins) / len(closed_trades) * 100) if closed_trades else 0.0
+        best_trade = max((t.pnl_usdt or 0.0 for t in closed_trades), default=0.0)
+        worst_trade = min((t.pnl_usdt or 0.0 for t in closed_trades), default=0.0)
+
+        bal_now   = get_paper_balance()
+        bal_start = config.PAPER_STARTING_BALANCE
+        bal_delta = bal_now - bal_start
+        arrow = "▲" if bal_delta >= 0 else "▼"
+
+        logger.info("=" * 60)
+        logger.info(f"  📊 PERFORMANCE REPORT — Cycle #{cycle}")
+        logger.info("=" * 60)
+        logger.info(
+            f"  Mode           : {'PAPER (Testnet)' if config.PAPER_TRADING else '⚠ LIVE'}"
+        )
+        logger.info(
+            f"  Paper Wallet   : ${bal_start:.2f} start  →  ${bal_now:.2f} now   "
+            f"{arrow} {bal_delta:+.4f} USDT"
+        )
+        logger.info(
+            f"  Realised PnL   : ${total_pnl:+.4f} USDT"
+        )
+        logger.info(
+            f"  Trades         : {len(all_trades)} total | "
+            f"✅ {len(wins)} wins | ❌ {len(losses)} losses | 🟡 {len(open_trades)} open"
+        )
+        logger.info(f"  Win Rate       : {win_rate:.1f}%")
+        if closed_trades:
+            logger.info(f"  Best Trade     : ${best_trade:+.4f} USDT")
+            logger.info(f"  Worst Trade    : ${worst_trade:+.4f} USDT")
+        logger.info("-" * 60)
+
+        if open_trades:
+            logger.info("  OPEN POSITIONS:")
+            for t in open_trades:
+                trigger = (t.notes or "—").split("|")[0].strip()
+                logger.info(
+                    f"    #{t.id:<3} {t.symbol:<12} entry=${t.entry_price:.6g} | "
+                    f"TP=${t.take_profit:.6g} | SL=${t.stop_loss:.6g} | [{trigger}]"
+                )
+
+        if closed_trades:
+            logger.info("  CLOSED TRADES:")
+            for t in closed_trades:
+                pnl_str  = f"${t.pnl_usdt:+.4f}" if t.pnl_usdt is not None else "   —   "
+                exit_str = f"${t.exit_price:.6g}" if t.exit_price else "  —  "
+                trigger  = (t.notes or "—").split("|")[0].strip()
+                icon = "✅" if t.status == "WIN" else "❌"
+                logger.info(
+                    f"    #{t.id:<3} {icon} {t.symbol:<12} "
+                    f"${t.entry_price:.6g} → {exit_str} | PnL={pnl_str} | [{trigger}]"
+                )
+
+        logger.info("=" * 60)
+    finally:
+        session.close()
 
 
 # ─── Screener refresh logic ───────────────────────────────────────────────────
@@ -95,7 +190,7 @@ def refresh_watchlist():
 
 # ─── Single loop iteration ────────────────────────────────────────────────────
 
-def run_one_cycle():
+def run_one_cycle(cycle: int = 0):
     """Execute one full scan-verify-track-execute cycle."""
 
     if is_trading_halted():
@@ -122,6 +217,22 @@ def run_one_cycle():
 
         signal = get_signal(symbol)
         current_price = signal.get("current_price")
+
+        # ── Persist latest signal to DB so the dashboard can display it ──────
+        _sig_session = get_session()
+        try:
+            sc_row = _sig_session.query(ScreenedCoin).filter_by(
+                symbol=symbol, is_active=True
+            ).order_by(ScreenedCoin.id.desc()).first()
+            if sc_row:
+                sc_row.last_signal = signal.get("signal", "HOLD")
+                sc_row.signal_reason = (signal.get("reason") or "")[:200]
+                sc_row.signal_time = datetime.now(timezone.utc)
+                _sig_session.commit()
+        except Exception as _e:
+            logger.debug(f"Signal DB write failed for {symbol}: {_e}")
+        finally:
+            _sig_session.close()
         direction = signal.get("direction", "WAIT")
         thesis = signal.get("trade_thesis", "")
 
@@ -158,9 +269,17 @@ def run_one_cycle():
             logger.info(f"  >>> EXECUTING TRADE on {symbol} <<<")
             enter_trade(signal, sentiment_score=sentiment_score)
 
-    # Step 5: Monitor all open positions for TP/SL hits
+    # Step 5: Monitor all open positions for TP/SL hits using real-time prices
     if current_prices:
-        check_open_positions(current_prices)
+        # Upgrade candle-close prices to live spot prices for accurate TP/SL checks
+        live_prices: dict = {}
+        for sym in list(current_prices.keys()):
+            live = fetch_live_price(sym)
+            live_prices[sym] = live if live is not None else current_prices[sym]
+        check_open_positions(live_prices)
+
+    # Step 6: Print P&L performance report every cycle
+    print_performance_report(cycle)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
@@ -186,7 +305,7 @@ def main():
             cycle += 1
             logger.info(f"--- Cycle #{cycle} | {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} ---")
             try:
-                run_one_cycle()
+                run_one_cycle(cycle)
             except Exception as e:
                 logger.error(f"Unhandled error in cycle #{cycle}: {e}", exc_info=True)
 

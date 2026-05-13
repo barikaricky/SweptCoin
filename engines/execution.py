@@ -21,6 +21,14 @@ from database.models import Trade
 # Bybit SDK — only imported when not paper trading
 _bybit_client = None
 
+# ─── Paper trading balance (virtual wallet) ───────────────────────────────────
+_paper_balance: float = config.PAPER_STARTING_BALANCE
+
+
+def get_paper_balance() -> float:
+    """Return the current simulated USDT balance for paper trading."""
+    return round(_paper_balance, 4)
+
 
 def _get_bybit_client():
     """Lazy-load the Bybit HTTP client."""
@@ -54,9 +62,9 @@ def is_trading_halted() -> bool:
 # ─── Account info ─────────────────────────────────────────────────────────────
 
 def get_usdt_balance() -> float:
-    """Return current USDT balance from Bybit. Returns 0 on error."""
+    """Return current USDT balance. In paper mode returns the tracked virtual balance."""
     if config.PAPER_TRADING:
-        return 50.0  # Simulated balance for paper trading
+        return _paper_balance
     try:
         client = _get_bybit_client()
         resp = client.get_wallet_balance(accountType="UNIFIED", coin="USDT")
@@ -160,9 +168,12 @@ def enter_trade(signal: Dict, sentiment_score: float = 0.0) -> Optional[Trade]:
     qty = _calculate_quantity(symbol, entry_price, usdt_amount)
 
     if config.PAPER_TRADING:
+        global _paper_balance
+        _paper_balance = round(_paper_balance - usdt_amount, 4)
         logger.info(
             f"[PAPER] BUY {symbol} | entry={entry_price} | qty={qty} | "
-            f"TP={take_profit} | SL={stop_loss} | ${usdt_amount:.2f} USDT"
+            f"TP={take_profit} | SL={stop_loss} | ${usdt_amount:.2f} USDT "
+            f"| balance=${_paper_balance:.2f}"
         )
     else:
         order_id = _place_real_order(symbol, "Buy", qty)
@@ -178,6 +189,7 @@ def enter_trade(signal: Dict, sentiment_score: float = 0.0) -> Optional[Trade]:
             entry_price=entry_price,
             take_profit=take_profit,
             stop_loss=stop_loss,
+            trailing_stop=round(entry_price * (1 - config.TRAILING_STOP_PCT), 8),
             quantity_usdt=usdt_amount,
             is_paper=config.PAPER_TRADING,
             status="OPEN",
@@ -222,9 +234,17 @@ def close_trade(trade_id: int, exit_price: float, outcome: str):
         trade.status = outcome
         session.commit()
 
+        # Return the original stake + profit/loss back to the paper wallet
+        if trade.is_paper:
+            global _paper_balance
+            returned = round(trade.quantity_usdt + pnl, 4)
+            _paper_balance = round(_paper_balance + returned, 4)
+
+        pnl_pct = (pnl / trade.quantity_usdt) * 100 if trade.quantity_usdt else 0
         logger.info(
             f"Trade #{trade_id} CLOSED | {trade.symbol} | {outcome} | "
-            f"entry={trade.entry_price} exit={exit_price} pnl=${pnl:+.4f}"
+            f"entry={trade.entry_price} → exit={exit_price} | "
+            f"PnL=${pnl:+.4f} ({pnl_pct:+.1f}%) | balance=${_paper_balance:.2f}"
         )
 
         # Update consecutive loss counter
@@ -250,8 +270,8 @@ def close_trade(trade_id: int, exit_price: float, outcome: str):
 
 def check_open_positions(current_prices: Dict[str, float]):
     """
-    Given a dict of {symbol: current_price}, check each open position and
-    close any that have hit their TP or SL.
+    Check each open position against its TP/SL.
+    Also ratchets the trailing stop upward as price rises to lock in profit.
     """
     session = get_session()
     try:
@@ -261,10 +281,28 @@ def check_open_positions(current_prices: Dict[str, float]):
             if price is None:
                 continue
 
+            # Ratchet trailing stop up once price is 1%+ in profit
+            if price > trade.entry_price * 1.01 and trade.trailing_stop is not None:
+                new_trail = round(price * (1 - config.TRAILING_STOP_PCT), 8)
+                if new_trail > trade.trailing_stop:
+                    trade.trailing_stop = new_trail
+                    session.commit()
+                    logger.info(
+                        f"Trade #{trade.id} [{trade.symbol}] trailing stop "
+                        f"raised to {new_trail:.6g}"
+                    )
+
+            # Effective stop = whichever is higher: original SL or trailing stop
+            effective_sl = max(
+                trade.stop_loss,
+                trade.trailing_stop if trade.trailing_stop else 0,
+            )
+
             if price >= trade.take_profit:
                 close_trade(trade.id, price, "WIN")
-            elif price <= trade.stop_loss:
-                close_trade(trade.id, price, "LOSS")
+            elif price <= effective_sl:
+                outcome = "WIN" if price > trade.entry_price else "LOSS"
+                close_trade(trade.id, price, outcome)
     finally:
         session.close()
 

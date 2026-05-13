@@ -100,8 +100,8 @@ def run_backtest(symbol: str, usdt_per_trade: float = 10.0) -> BacktestResult:
     """
     logger.info(f"Starting backtest for {symbol}...")
 
-    df_day = load_full_history(symbol, config.CANDLE_INTERVAL_DAY)
-    df_min = load_full_history(symbol, config.CANDLE_INTERVAL_MINUTE)
+    df_day = load_full_history(symbol, config.CANDLE_INTERVAL)
+    df_min = load_full_history(symbol, config.CANDLE_INTERVAL)
 
     result = BacktestResult()
 
